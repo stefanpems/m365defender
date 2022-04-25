@@ -1,0 +1,576 @@
+{
+    "definition": {
+        "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+        "actions": {
+            "AdvancedHuntingAPICall": {
+                "inputs": {
+                    "body": {
+                        "Query": "IdentityDirectoryEvents | where ingestion_time() > ago(1h) | where Application == \"Active Directory\" | where ActionType == \"Group Membership changed\" | where DestinationDeviceName != \"\" | extend ToGroup = tostring(parse_json(AdditionalFields).[\"TO.GROUP\"]) | extend FromGroup = tostring(parse_json(AdditionalFields).[\"FROM.GROUP\"]) | extend Action = iff(isempty(ToGroup), \"Remove\", \"Add\") | extend GroupModified = iff(isempty(ToGroup), FromGroup, ToGroup) | extend TargetGroupName = tostring(parse_json(AdditionalFields).[\"TARGET_OBJECT.GROUP\"]) | extend ActorAccount = tostring(parse_json(AdditionalFields).[\"ACTOR.ACCOUNT\"]) | extend ToDevice = tostring(parse_json(AdditionalFields).[\"TO.DEVICE\"]) | where Action == \"Add\" and GroupModified == \"Domain Admins\" | project Timestamp, AccountSid, Action, GroupModified,  Target_Account = TargetAccountDisplayName, Target_UPN = TargetAccountUpn, Target_Group=TargetGroupName,  DC=DestinationDeviceName, ActorAccount, ToDevice, Actor=AccountName, ActorDomain=AccountDomain, AdditionalFields, ReportId | sort by Timestamp desc "
+                    },
+                    "headers": {
+                        "Accept": "application/json",
+                        "Authorization": "Bearer @{body('Parse_JSON_-_Read_Token')?['access_token']}",
+                        "Content-Type": "application/json"
+                    },
+                    "method": "POST",
+                    "uri": "https://api.security.microsoft.com/api/advancedhunting/run"
+                },
+                "runAfter": {
+                    "Parse_JSON_-_Read_Token": [
+                        "Succeeded"
+                    ]
+                },
+                "type": "Http"
+            },
+            "ClientID": {
+                "inputs": {
+                    "variables": [
+                        {
+                            "name": "ClientID",
+                            "type": "string",
+                            "value": "<insert-your-application-ID>"
+                        }
+                    ]
+                },
+                "runAfter": {
+                    "TenantID": [
+                        "Succeeded"
+                    ]
+                },
+                "type": "InitializeVariable"
+            },
+            "ClientSecret": {
+                "inputs": {
+                    "variables": [
+                        {
+                            "name": "ClientSecret",
+                            "type": "string",
+                            "value": "<insert-your-application-secret>"
+                        }
+                    ]
+                },
+                "runAfter": {
+                    "ClientID": [
+                        "Succeeded"
+                    ]
+                },
+                "type": "InitializeVariable"
+            },
+            "Condition": {
+                "actions": {
+                    "Send_an_email_(V2)": {
+                        "inputs": {
+                            "body": {
+                                "Body": "<p>The following users have been added to Domain Admins: @{variables('newDomainAdmins')}</p>",
+                                "Subject": "@variables('EmailSubject')",
+                                "To": "@variables('EmailTargetRecipients')"
+                            },
+                            "host": {
+                                "connection": {
+                                    "name": "@parameters('$connections')['office365']['connectionId']"
+                                }
+                            },
+                            "method": "post",
+                            "path": "/v2/Mail"
+                        },
+                        "runAfter": {},
+                        "type": "ApiConnection"
+                    }
+                },
+                "expression": {
+                    "and": [
+                        {
+                            "not": {
+                                "equals": [
+                                    "@variables('newDomainAdmins')",
+                                    ""
+                                ]
+                            }
+                        }
+                    ]
+                },
+                "runAfter": {
+                    "For_each_-_Result": [
+                        "Succeeded"
+                    ]
+                },
+                "type": "If"
+            },
+            "EmailSubject": {
+                "inputs": {
+                    "variables": [
+                        {
+                            "name": "EmailSubject",
+                            "type": "string",
+                            "value": "Warning: new user(s) added to Domain Admins"
+                        }
+                    ]
+                },
+                "runAfter": {
+                    "EmailTargetRecipients": [
+                        "Succeeded"
+                    ]
+                },
+                "type": "InitializeVariable"
+            },
+            "EmailTargetRecipients": {
+                "inputs": {
+                    "variables": [
+                        {
+                            "name": "EmailTargetRecipients",
+                            "type": "string",
+                            "value": "<insert-your-desired-email-recipients>"
+                        }
+                    ]
+                },
+                "runAfter": {
+                    "ClientSecret": [
+                        "Succeeded"
+                    ]
+                },
+                "type": "InitializeVariable"
+            },
+            "For_each_-_Result": {
+                "actions": {
+                    "Append_to_string_variable": {
+                        "inputs": {
+                            "name": "newDomainAdmins",
+                            "value": "@{body('Parse_JSON_-_Read_Result')?['AdditionalFields']?['TARGET_OBJECT.USER']}; "
+                        },
+                        "runAfter": {
+                            "Parse_JSON_-_Read_Result": [
+                                "Succeeded"
+                            ]
+                        },
+                        "type": "AppendToStringVariable"
+                    },
+                    "Parse_JSON_-_Read_Result": {
+                        "inputs": {
+                            "content": "@items('For_each_-_Result')",
+                            "schema": {
+                                "properties": {
+                                    "AccountSid": {
+                                        "type": "string"
+                                    },
+                                    "Action": {
+                                        "type": "string"
+                                    },
+                                    "Actor": {
+                                        "type": "string"
+                                    },
+                                    "ActorAccount": {
+                                        "type": "string"
+                                    },
+                                    "ActorDomain": {
+                                        "type": "string"
+                                    },
+                                    "AdditionalFields": {
+                                        "properties": {
+                                            "ACTOR.ACCOUNT": {
+                                                "type": "string"
+                                            },
+                                            "Count": {
+                                                "type": "string"
+                                            },
+                                            "DestinationComputerObjectGuid": {
+                                                "type": "string"
+                                            },
+                                            "DestinationComputerOperatingSystem": {
+                                                "type": "string"
+                                            },
+                                            "DestinationComputerOperatingSystemType": {
+                                                "type": "string"
+                                            },
+                                            "DestinationComputerOperatingSystemVersion": {
+                                                "type": "string"
+                                            },
+                                            "TARGET_OBJECT.ENTITY_USER": {
+                                                "type": "string"
+                                            },
+                                            "TARGET_OBJECT.USER": {
+                                                "type": "string"
+                                            },
+                                            "TO.DEVICE": {
+                                                "type": "string"
+                                            },
+                                            "TO.GROUP": {
+                                                "type": "string"
+                                            }
+                                        },
+                                        "type": "object"
+                                    },
+                                    "DC": {
+                                        "type": "string"
+                                    },
+                                    "GroupModified": {
+                                        "type": "string"
+                                    },
+                                    "ReportId": {
+                                        "type": "string"
+                                    },
+                                    "Target_Account": {
+                                        "type": "string"
+                                    },
+                                    "Target_Group": {
+                                        "type": "string"
+                                    },
+                                    "Target_UPN": {
+                                        "type": "string"
+                                    },
+                                    "Timestamp": {
+                                        "type": "string"
+                                    },
+                                    "ToDevice": {
+                                        "type": "string"
+                                    }
+                                },
+                                "type": "object"
+                            }
+                        },
+                        "runAfter": {},
+                        "type": "ParseJson"
+                    }
+                },
+                "foreach": "@body('Parse_JSON_-_Read_Results')?['Results']",
+                "runAfter": {
+                    "Parse_JSON_-_Read_Results": [
+                        "Succeeded"
+                    ]
+                },
+                "type": "Foreach"
+            },
+            "GetToken": {
+                "inputs": {
+                    "body": "client_id=@{variables('ClientID')}&resource=https://api.security.microsoft.com&client_secret=@{variables('ClientSecret')}&grant_type=client_credentials",
+                    "headers": {
+                        "Content-Type": "application/x-www-form-urlencoded"
+                    },
+                    "method": "POST",
+                    "uri": "https://login.microsoftonline.com/@{variables('TenantID')}/oauth2/token"
+                },
+                "runAfter": {
+                    "newDomainAdmins": [
+                        "Succeeded"
+                    ]
+                },
+                "type": "Http"
+            },
+            "Parse_JSON_-_Read_Results": {
+                "inputs": {
+                    "content": "@body('AdvancedHuntingAPICall')",
+                    "schema": {
+                        "properties": {
+                            "Results": {
+                                "items": {
+                                    "properties": {
+                                        "AccountSid": {
+                                            "type": "string"
+                                        },
+                                        "Action": {
+                                            "type": "string"
+                                        },
+                                        "Actor": {
+                                            "type": "string"
+                                        },
+                                        "ActorAccount": {
+                                            "type": "string"
+                                        },
+                                        "ActorDomain": {
+                                            "type": "string"
+                                        },
+                                        "AdditionalFields": {
+                                            "properties": {
+                                                "ACTOR.ACCOUNT": {
+                                                    "type": "string"
+                                                },
+                                                "Count": {
+                                                    "type": "string"
+                                                },
+                                                "DestinationComputerObjectGuid": {
+                                                    "type": "string"
+                                                },
+                                                "DestinationComputerOperatingSystem": {
+                                                    "type": "string"
+                                                },
+                                                "DestinationComputerOperatingSystemType": {
+                                                    "type": "string"
+                                                },
+                                                "DestinationComputerOperatingSystemVersion": {
+                                                    "type": "string"
+                                                },
+                                                "TARGET_OBJECT.ENTITY_USER": {
+                                                    "type": "string"
+                                                },
+                                                "TARGET_OBJECT.USER": {
+                                                    "type": "string"
+                                                },
+                                                "TO.DEVICE": {
+                                                    "type": "string"
+                                                },
+                                                "TO.GROUP": {
+                                                    "type": "string"
+                                                }
+                                            },
+                                            "type": "object"
+                                        },
+                                        "DC": {
+                                            "type": "string"
+                                        },
+                                        "GroupModified": {
+                                            "type": "string"
+                                        },
+                                        "ReportId": {
+                                            "type": "string"
+                                        },
+                                        "Target_Account": {
+                                            "type": "string"
+                                        },
+                                        "Target_Group": {
+                                            "type": "string"
+                                        },
+                                        "Target_UPN": {
+                                            "type": "string"
+                                        },
+                                        "Timestamp": {
+                                            "type": "string"
+                                        },
+                                        "ToDevice": {
+                                            "type": "string"
+                                        }
+                                    },
+                                    "required": [
+                                        "Timestamp",
+                                        "AccountSid",
+                                        "Action",
+                                        "GroupModified",
+                                        "Target_Account",
+                                        "Target_UPN",
+                                        "Target_Group",
+                                        "DC",
+                                        "ActorAccount",
+                                        "ToDevice",
+                                        "Actor",
+                                        "ActorDomain",
+                                        "AdditionalFields",
+                                        "ReportId"
+                                    ],
+                                    "type": "object"
+                                },
+                                "type": "array"
+                            },
+                            "Schema": {
+                                "items": {
+                                    "properties": {
+                                        "Name": {
+                                            "type": "string"
+                                        },
+                                        "Type": {
+                                            "type": "string"
+                                        }
+                                    },
+                                    "required": [
+                                        "Name",
+                                        "Type"
+                                    ],
+                                    "type": "object"
+                                },
+                                "type": "array"
+                            },
+                            "Stats": {
+                                "properties": {
+                                    "ExecutionTime": {
+                                        "type": "number"
+                                    },
+                                    "dataset_statistics": {
+                                        "items": {
+                                            "properties": {
+                                                "table_row_count": {
+                                                    "type": "integer"
+                                                },
+                                                "table_size": {
+                                                    "type": "integer"
+                                                }
+                                            },
+                                            "required": [
+                                                "table_row_count",
+                                                "table_size"
+                                            ],
+                                            "type": "object"
+                                        },
+                                        "type": "array"
+                                    },
+                                    "resource_usage": {
+                                        "properties": {
+                                            "cache": {
+                                                "properties": {
+                                                    "disk": {
+                                                        "properties": {
+                                                            "hits": {
+                                                                "type": "integer"
+                                                            },
+                                                            "misses": {
+                                                                "type": "integer"
+                                                            },
+                                                            "total": {
+                                                                "type": "integer"
+                                                            }
+                                                        },
+                                                        "type": "object"
+                                                    },
+                                                    "memory": {
+                                                        "properties": {
+                                                            "hits": {
+                                                                "type": "integer"
+                                                            },
+                                                            "misses": {
+                                                                "type": "integer"
+                                                            },
+                                                            "total": {
+                                                                "type": "integer"
+                                                            }
+                                                        },
+                                                        "type": "object"
+                                                    }
+                                                },
+                                                "type": "object"
+                                            },
+                                            "cpu": {
+                                                "properties": {
+                                                    "kernel": {
+                                                        "type": "string"
+                                                    },
+                                                    "total cpu": {
+                                                        "type": "string"
+                                                    },
+                                                    "user": {
+                                                        "type": "string"
+                                                    }
+                                                },
+                                                "type": "object"
+                                            },
+                                            "memory": {
+                                                "properties": {
+                                                    "peak_per_node": {
+                                                        "type": "integer"
+                                                    }
+                                                },
+                                                "type": "object"
+                                            }
+                                        },
+                                        "type": "object"
+                                    }
+                                },
+                                "type": "object"
+                            }
+                        },
+                        "type": "object"
+                    }
+                },
+                "runAfter": {
+                    "AdvancedHuntingAPICall": [
+                        "Succeeded"
+                    ]
+                },
+                "type": "ParseJson"
+            },
+            "Parse_JSON_-_Read_Token": {
+                "inputs": {
+                    "content": "@body('GetToken')",
+                    "schema": {
+                        "properties": {
+                            "access_token": {
+                                "type": "string"
+                            },
+                            "expires_in": {
+                                "type": "string"
+                            },
+                            "expires_on": {
+                                "type": "string"
+                            },
+                            "ext_expires_in": {
+                                "type": "string"
+                            },
+                            "not_before": {
+                                "type": "string"
+                            },
+                            "resource": {
+                                "type": "string"
+                            },
+                            "token_type": {
+                                "type": "string"
+                            }
+                        },
+                        "type": "object"
+                    }
+                },
+                "runAfter": {
+                    "GetToken": [
+                        "Succeeded"
+                    ]
+                },
+                "type": "ParseJson"
+            },
+            "TenantID": {
+                "inputs": {
+                    "variables": [
+                        {
+                            "name": "TenantID",
+                            "type": "string",
+                            "value": "<insert-your-tenant-id>"
+                        }
+                    ]
+                },
+                "runAfter": {},
+                "type": "InitializeVariable"
+            },
+            "newDomainAdmins": {
+                "inputs": {
+                    "variables": [
+                        {
+                            "name": "newDomainAdmins",
+                            "type": "string"
+                        }
+                    ]
+                },
+                "runAfter": {
+                    "EmailSubject": [
+                        "Succeeded"
+                    ]
+                },
+                "type": "InitializeVariable"
+            }
+        },
+        "contentVersion": "1.0.0.0",
+        "outputs": {},
+        "parameters": {
+            "$connections": {
+                "defaultValue": {},
+                "type": "Object"
+            }
+        },
+        "triggers": {
+            "Recurrence": {
+                "evaluatedRecurrence": {
+                    "frequency": "Hour",
+                    "interval": 1
+                },
+                "recurrence": {
+                    "frequency": "Hour",
+                    "interval": 1
+                },
+                "type": "Recurrence"
+            }
+        }
+    },
+    "parameters": {
+        "$connections": {
+            "value": {
+                "office365": {
+                    "connectionId": "/subscriptions/<insert-your-subscription-ID>/resourceGroups/<insert-your-resource-group-name>/providers/Microsoft.Web/connections/office365",
+                    "connectionName": "office365",
+                    "id": "/subscriptions/<insert-your-subscription-ID>/providers/Microsoft.Web/locations/westeurope/managedApis/office365"
+                }
+            }
+        }
+    }
+}
