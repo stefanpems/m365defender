@@ -1,4 +1,4 @@
-This KQL query returns the versions of the Arc, AMA, MMA and MDE software components running on the Windows and Linux servers.
+The KQL query in ServerAgentsAssessment returns the versions of the Arc, AMA, MMA and MDE software components running on the Windows and Linux servers.
 It requires MDE running on those servers (the software inventory is done by its MDVM component). The query can be launched in the Advanced Hunting page of the Microsoft Defender XDR portal.
 Please note that I wasn't able to find a way to get the version of the AMA agent running on Windows Servers. I'm able to get the version of the AMA "extension" associated to the related VMs/Arc enabled servers by using a KQL query in Azure Resource Graph Explorer but I would have preferred to get everything in MDVM... Any better idea to get this result is welcome.
 
