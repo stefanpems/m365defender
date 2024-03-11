@@ -35,8 +35,8 @@ DeviceInfo_latest
 | join kind=leftouter sw_oms on DeviceName
 | project 
 DeviceName, OSDistribution, OSVersionInfo, MdeClientType, MdeClientVersion,  
-MdeBuildNumber=iif(MdeBuildNumber != "",MdeBuildNumber,"-"), 
-LegacyMdeBuildNumber=iif(LegacyMdeBuildNumber != "",LegacyMdeBuildNumber,"-"),
+MdeBuildNumber=iif((MdeClientType == "Unified-Windows")and((OSDistribution endswith "2016")or(OSDistribution endswith "2012R2")),iif(LegacyMdeBuildNumber != "",LegacyMdeBuildNumber,"-"),iif(MdeBuildNumber != "",MdeBuildNumber,"-")), 
+LegacyMdeBuildNumber=iif((MdeClientType == "MMA-Windows"),iif(LegacyMdeBuildNumber != "",LegacyMdeBuildNumber,"-"),"-"), 
 ArcVersion=iif(ArcVersion != "",ArcVersion,"-"), 
 AmaVersion=iif(OSPlatform =~ "Linux",iif(AmaVersion != "",AmaVersion,"-"),"?"),
 MmaVersion=iif(OSPlatform =~ "Linux",iif(OmsVersion != "",OmsVersion,"-"),iif(MmaVersion != "",MmaVersion,"-")), 
